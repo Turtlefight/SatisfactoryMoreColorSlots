@@ -68,13 +68,17 @@ void UMCS_FGColoredInstanceManagerOverride::OverrideSetupInstanceLists(UStaticMe
 
 	FVector2D minMaxCullDistance = optimizationSettings->GetCullDistanceByCategory(this->mCullCategory, renderFactor);
 
+	// Don't create instances directly - only create them when they first become necessary
+	/*
 	if (!this->mSingleColorOnly) {
 		for (int i = 0; i < MCS_BUILDABLE_COLORS_MAX_SLOTS - BUILDABLE_COLORS_MAX_SLOTS; i++) {
 			this->mAdditionalInstanceComponents[i] = CreateHierarchicalInstancingComponent(staticMesh, useAsOccluder, minMaxCullDistance);
 		}
 	}
-
-	OverrideUpdateMaterialColors();
+	*/
+	this->mStaticMeshCached = staticMesh;
+	this->mUseAsOccluderCached = useAsOccluder;
+	this->mMinMaxCullDistanceCached = minMaxCullDistance;
 }
 
 void UMCS_FGColoredInstanceManagerOverride::OverrideClearInstances() {
@@ -89,6 +93,12 @@ void UMCS_FGColoredInstanceManagerOverride::OverrideAddInstance(const FTransform
 		checkf(colorIndex, TEXT("UFGColoredInstanceManager::OverrideAddInstance: colorIndex out of range"));
 
 	int additionalColorIndex = colorIndex - BUILDABLE_COLORS_MAX_SLOTS;
+
+	if (!this->mSingleColorOnly && !this->mAdditionalInstanceComponents[additionalColorIndex]) {
+		this->mAdditionalInstanceComponents[additionalColorIndex] = CreateHierarchicalInstancingComponent(this->mStaticMeshCached, this->mUseAsOccluderCached, this->mMinMaxCullDistanceCached);
+		InitMaterialColorsForInstance(additionalColorIndex);
+	}
+
 	if (this->mAdditionalInstanceComponents[additionalColorIndex]) {
 		checkf(!handle.IsInstanced(), TEXT("UMCS_FGColoredInstanceManagerOverride::OverrideAddInstance: Handle is already instanced!"));
 
@@ -129,61 +139,57 @@ void UMCS_FGColoredInstanceManagerOverride::OverrideRemoveInstance(InstanceHandl
 	handle.HandleID = INDEX_NONE;
 }
 
-void UMCS_FGColoredInstanceManagerOverride::OverrideUpdateMaterialColors() {
+void UMCS_FGColoredInstanceManagerOverride::InitMaterialColorsForInstance(int additionalSlotIndex) {
 	if (!this->mSingleColorOnly) {
 		UWorld* world = GetWorld();
 		AFGBuildableSubsystem* buildableSubsystem = AFGBuildableSubsystem::Get(world);
 		if (buildableSubsystem) {
-			for (int i = 0; i < MCS_BUILDABLE_COLORS_MAX_SLOTS - BUILDABLE_COLORS_MAX_SLOTS; i++) {
-				UHierarchicalInstancedStaticMeshComponent* hismc = this->mAdditionalInstanceComponents[i];
-				int numMaterials = hismc->GetMaterials().Num();
-				for (int j = 0; j < numMaterials; j++) {
-					UMaterialInterface* material = hismc->GetMaterial(j);
+			UHierarchicalInstancedStaticMeshComponent* hismc = this->mAdditionalInstanceComponents[additionalSlotIndex];
+			int numMaterials = hismc->GetMaterials().Num();
+			for (int i = 0; i < numMaterials; i++) {
+				UMaterialInterface* material = hismc->GetMaterial(i);
 
-					FLinearColor dummyColor;
-					bool found = material->GetVectorParameterValue(
-						FHashedMaterialParameterInfo(FHashedName(PrimaryColor), GlobalParameter, -1),
+				FLinearColor dummyColor;
+				bool found = material->GetVectorParameterValue(
+					FHashedMaterialParameterInfo(FHashedName(PrimaryColor), GlobalParameter, -1),
+					dummyColor,
+					false
+				);
+
+				if (!found) {
+					found = material->GetVectorParameterValue(
+						FHashedMaterialParameterInfo(FHashedName(SecondaryColor), GlobalParameter, -1),
 						dummyColor,
 						false
 					);
+				}
 
-					if (!found) {
-						found = material->GetVectorParameterValue(
-							FHashedMaterialParameterInfo(FHashedName(SecondaryColor), GlobalParameter, -1),
-							dummyColor,
-							false
-						);
+				if (found) {
+					FString materialName;
+					material->GetFName().ToString(materialName);
+					FString empty;
+
+					UFGFactoryMaterialInstanceManager* miManager = buildableSubsystem->GetOrCreateMaterialManagerForMaterialInterface(
+						material,
+						materialName,
+						empty,
+						true,
+						nullptr,
+						nullptr
+					);
+
+					if (!miManager) {
+						FLinearColor linearPrimaryColor = buildableSubsystem->GetColorSlotPrimary_Linear(BUILDABLE_COLORS_MAX_SLOTS + additionalSlotIndex);
+						hismc->SetVectorParameterValueOnMaterials(PrimaryColor, FVector(linearPrimaryColor));
+						FLinearColor linearSecondaryColor = buildableSubsystem->GetColorSlotSecondary_Linear(BUILDABLE_COLORS_MAX_SLOTS + additionalSlotIndex);
+						hismc->SetVectorParameterValueOnMaterials(SecondaryColor, FVector(linearSecondaryColor));
 					}
-
-					if (found) {
-						FString materialName;
-						material->GetFName().ToString(materialName);
-						FString empty;
-
-						UFGFactoryMaterialInstanceManager* miManager = buildableSubsystem->GetOrCreateMaterialManagerForMaterialInterface(
-							material,
-							materialName,
-							empty,
-							true,
-							nullptr,
-							nullptr
-						);
-
-						if (!miManager) {
-							FLinearColor linearPrimaryColor = buildableSubsystem->GetColorSlotPrimary_Linear(BUILDABLE_COLORS_MAX_SLOTS + i);
-							hismc->SetVectorParameterValueOnMaterials(PrimaryColor, FVector(linearPrimaryColor));
-							FLinearColor linearSecondaryColor = buildableSubsystem->GetColorSlotSecondary_Linear(BUILDABLE_COLORS_MAX_SLOTS + i);
-							hismc->SetVectorParameterValueOnMaterials(SecondaryColor, FVector(linearSecondaryColor));
+					else {
+						UMaterialInstanceDynamic* newMaterialInstance = miManager->GetMaterialForIndex(BUILDABLE_COLORS_MAX_SLOTS + additionalSlotIndex);
+						if (newMaterialInstance) {
+							hismc->SetMaterial(i, newMaterialInstance);
 						}
-						else {
-							UMaterialInstanceDynamic* newMaterialInstance = miManager->GetMaterialForIndex(BUILDABLE_COLORS_MAX_SLOTS + i);
-							if (newMaterialInstance) {
-								hismc->SetMaterial(j, newMaterialInstance);
-							}
-						}
-
 					}
-
 				}
 			}
 		}

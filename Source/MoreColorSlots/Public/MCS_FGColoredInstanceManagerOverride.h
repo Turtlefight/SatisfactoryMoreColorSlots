@@ -17,11 +17,18 @@ private:
 	void OverrideClearInstances();
 	void OverrideAddInstance(const FTransform& transform, InstanceHandle& handle, uint8 colorIndex);
 	void OverrideRemoveInstance(InstanceHandle& handle);
-	void OverrideUpdateMaterialColors();
+	void InitMaterialColorsForInstance(int additionalSlotIndex);
 
 private:
 	UPROPERTY()
 	class UHierarchicalInstancedStaticMeshComponent* mAdditionalInstanceComponents[MCS_BUILDABLE_COLORS_MAX_SLOTS - BUILDABLE_COLORS_MAX_SLOTS];
 
 	TArray<UFGColoredInstanceManager::InstanceHandle*> mAdditionalHandles[MCS_BUILDABLE_COLORS_MAX_SLOTS - BUILDABLE_COLORS_MAX_SLOTS];
+
+	FVector2D mMinMaxCullDistanceCached;
+
+	UPROPERTY()
+	UStaticMesh* mStaticMeshCached;
+
+	bool mUseAsOccluderCached;
 };
