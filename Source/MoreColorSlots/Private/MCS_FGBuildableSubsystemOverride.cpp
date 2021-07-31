@@ -95,14 +95,14 @@ void MCS_SetupFGBuildableSubsystemOverrides() {
 			return;
 		
 		if (self->mColorSlotsPrimary_Linear.Num() < MCS_BUILDABLE_COLORS_MAX_SLOTS) {
-			FLinearColor primaryColor = self->mColorSlotsPrimary_Linear[0];
+			FLinearColor primaryColor(FColor(255, 149, 73, 255));
 			for (int i = self->mColorSlotsPrimary_Linear.Num(); i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
 				self->mColorSlotsPrimary_Linear.Add(primaryColor);
 			}
 		}
 
 		if (self->mColorSlotsSecondary_Linear.Num() < MCS_BUILDABLE_COLORS_MAX_SLOTS) {
-			FLinearColor secondaryColor = self->mColorSlotsSecondary_Linear[0];
+			FLinearColor secondaryColor(FColor(95, 102, 140, 255));
 			for (int i = self->mColorSlotsSecondary_Linear.Num(); i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
 				self->mColorSlotsSecondary_Linear.Add(secondaryColor);
 			}
@@ -112,8 +112,13 @@ void MCS_SetupFGBuildableSubsystemOverrides() {
 		
 		AFGGameState* gameState = self->GetWorld()->GetGameState<AFGGameState>();
 		if (gameState) {
-			gameState->mHasInitializedColorSlots = false;
 			gameState->SetupColorSlots_Linear(self->mColorSlotsPrimary_Linear, self->mColorSlotsSecondary_Linear);
+			if (gameState->mBuildingColorSlotsPrimary_Linear.Num() != MCS_BUILDABLE_COLORS_MAX_SLOTS || gameState->mBuildingColorSlotsSecondary_Linear.Num() != MCS_BUILDABLE_COLORS_MAX_SLOTS) {
+				gameState->mHasInitializedColorSlots = false;
+				gameState->mBuildingColorSlotsPrimary_Linear.Empty();
+				gameState->mBuildingColorSlotsSecondary_Linear.Empty();
+				gameState->SetupColorSlots_Linear(self->mColorSlotsPrimary_Linear, self->mColorSlotsSecondary_Linear);
+			}
 		}
 		
 	});
