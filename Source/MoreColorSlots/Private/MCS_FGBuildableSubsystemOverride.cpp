@@ -2,12 +2,15 @@
 #include "MCS_FGBuildableSubsystemOverride.h"
 #include "MCS_FGColoredInstanceManagerOverride.h"
 #include "MoreColorSlotsModule.h"
+#include "MCS_MoreColorSlotsConfigStruct.h"
+#include "MCS_BPLibrary.h"
 
 #include "SML/Public/Patching/NativeHookManager.h"
 #include "FGBuildableSubsystem.h"
 #include "FGColoredInstanceManager.h"
 #include "FGColoredInstanceMeshProxy.h"
 #include "FGGameState.h"
+#include "FGSaveSession.h"
 
 void MCS_SetupFGBuildableSubsystemOverrides() {
 	/*
@@ -60,7 +63,11 @@ void MCS_SetupFGBuildableSubsystemOverrides() {
 	SUBSCRIBE_METHOD(AFGBuildableSubsystem::SetColorSlotPrimary_Linear, [](auto& scope, AFGBuildableSubsystem* self, uint8 index, FLinearColor color) {
 		scope.Cancel();
 
-		if (index < MCS_BUILDABLE_COLORS_MAX_SLOTS) {
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+		EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+		uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
+
+		if (index < numColorSlots) {
 			if (index >= self->mColorSlotsPrimary_Linear.Num()) {
 				UE_LOG(LogMoreColorSlots, Error, TEXT("Failed To Set primary Slot! Invalid index: [%d]"), index);
 				return;
@@ -75,7 +82,11 @@ void MCS_SetupFGBuildableSubsystemOverrides() {
 	SUBSCRIBE_METHOD(AFGBuildableSubsystem::SetColorSlotSecondary_Linear, [](auto& scope, AFGBuildableSubsystem* self, uint8 index, FLinearColor color) {
 		scope.Cancel();
 
-		if (index < MCS_BUILDABLE_COLORS_MAX_SLOTS) {
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+		EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+		uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
+
+		if (index < numColorSlots) {
 			if (index >= self->mColorSlotsSecondary_Linear.Num()) {
 				UE_LOG(LogMoreColorSlots, Error, TEXT("Failed To Set secondary Slot! Invalid index: [%d]"), index);
 				return;
@@ -93,27 +104,47 @@ void MCS_SetupFGBuildableSubsystemOverrides() {
 
 		if (self->GetLocalRole() != ROLE_Authority)
 			return;
+
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+		EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+		uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
 		
-		if (self->mColorSlotsPrimary_Linear.Num() < MCS_BUILDABLE_COLORS_MAX_SLOTS) {
+		if (self->mColorSlotsPrimary_Linear.Num() > numColorSlots || self->mColorSlotsSecondary_Linear.Num() > numColorSlots) {
+			UFGSaveSession* saveSession = UFGSaveSession::Get(self->GetWorld());
+			check(saveSession);
+
+			for (UObject* obj : saveSession->mLoadedObjects) {
+				if (obj->GetClass()->ImplementsInterface(UFGColorInterface::StaticClass())) {
+					if (IFGColorInterface::Execute_GetColorSlot(obj) >= numColorSlots) {
+						IFGColorInterface::Execute_SetColorSlot(obj, 0);
+					}
+				}
+			}
+
+			self->mColorSlotsPrimary_Linear.SetNum(numColorSlots, true);
+			self->mColorSlotsSecondary_Linear.SetNum(numColorSlots, true);
+		}
+
+		if (self->mColorSlotsPrimary_Linear.Num() < numColorSlots) {
 			FLinearColor primaryColor(FColor(255, 149, 73, 255));
-			for (int i = self->mColorSlotsPrimary_Linear.Num(); i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
+			for (int i = self->mColorSlotsPrimary_Linear.Num(); i < numColorSlots; i++) {
 				self->mColorSlotsPrimary_Linear.Add(primaryColor);
 			}
 		}
 
-		if (self->mColorSlotsSecondary_Linear.Num() < MCS_BUILDABLE_COLORS_MAX_SLOTS) {
+		if (self->mColorSlotsSecondary_Linear.Num() < numColorSlots) {
 			FLinearColor secondaryColor(FColor(95, 102, 140, 255));
-			for (int i = self->mColorSlotsSecondary_Linear.Num(); i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
+			for (int i = self->mColorSlotsSecondary_Linear.Num(); i < numColorSlots; i++) {
 				self->mColorSlotsSecondary_Linear.Add(secondaryColor);
 			}
 		}
 
-		self->mNbPlayerExposedSlots = MCS_BUILDABLE_COLORS_MAX_SLOTS;
+		self->mNbPlayerExposedSlots = numColorSlots;
 		
 		AFGGameState* gameState = self->GetWorld()->GetGameState<AFGGameState>();
 		if (gameState) {
 			gameState->SetupColorSlots_Linear(self->mColorSlotsPrimary_Linear, self->mColorSlotsSecondary_Linear);
-			if (gameState->mBuildingColorSlotsPrimary_Linear.Num() != MCS_BUILDABLE_COLORS_MAX_SLOTS || gameState->mBuildingColorSlotsSecondary_Linear.Num() != MCS_BUILDABLE_COLORS_MAX_SLOTS) {
+			if (gameState->mBuildingColorSlotsPrimary_Linear.Num() != numColorSlots || gameState->mBuildingColorSlotsSecondary_Linear.Num() != numColorSlots) {
 				gameState->mHasInitializedColorSlots = false;
 				gameState->mBuildingColorSlotsPrimary_Linear.Empty();
 				gameState->mBuildingColorSlotsSecondary_Linear.Empty();
@@ -122,4 +153,9 @@ void MCS_SetupFGBuildableSubsystemOverrides() {
 		}
 		
 	});
+	/*
+	SUBSCRIBE_METHOD_VIRTUAL(AFGBuildableSubsystem::PostLoadGame_Implementation, Cast<IFGSaveInterface>(bsCDO), [](auto& scope, AFGBuildableSubsystem* self, int32 saveVersion, int32 gameVersion) {
+		scope(self, saveVersion, gameVersion);
+	});
+	*/
 }

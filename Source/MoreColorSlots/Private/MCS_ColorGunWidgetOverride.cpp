@@ -1,5 +1,6 @@
 
 #include "MCS_ColorGunWidgetOverride.h"
+#include "MCS_MoreColorSlotsConfigStruct.h"
 
 #include "SML/Public/Patching/BlueprintHookManager.h"
 #include "SML/Public/Patching/BlueprintHookHelper.h"
@@ -9,6 +10,8 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Blueprint/WidgetTree.h"
+#include "FGHUD.h"
+#include "UI/FGGameUI.h"
 
 
 void MCS_SetupColorGunWidgetOverride() {
@@ -57,6 +60,54 @@ void MCS_SetupColorGunWidgetOverride() {
 				newSlot->SetSize(slot->Size);
 				newSlot->SetVerticalAlignment(slot->VerticalAlignment);
 			}
+		}
+	}, EPredefinedHookOffset::Start);
+
+	
+	UClass* EquipColorGunClass = LoadObject<UClass>(nullptr, TEXT("/Game/FactoryGame/Equipment/ColorGun/Equip_ColorGun.Equip_ColorGun_C"));
+	check(EquipColorGunClass);
+	UFunction* ToggleColorPickerUI = EquipColorGunClass->FindFunctionByName(TEXT("ToggleColorPickerUI"));
+	check(ToggleColorPickerUI);
+
+	HookManager->HookBlueprintFunction(ToggleColorPickerUI, [](FBlueprintHookHelper& helper) {
+		AActor* context = CastChecked<AActor>(helper.GetContext());
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+
+		if (config.EnableBetterColorPicker) {
+			FObjectProperty* mColorWidgetProperty = CastFieldChecked<FObjectProperty>(context->GetClass()->FindPropertyByName(TEXT("mColorWidget")));
+			check(mColorWidgetProperty);
+
+			UObject* mColorWidget = mColorWidgetProperty->GetPropertyValue_InContainer(context, 0);
+			bool valid = mColorWidget && !mColorWidget->IsPendingKill();
+			if (valid) {
+				UFunction* ClearColorPickerUI = context->GetClass()->FindFunctionByName(TEXT("Event Clear Color Picker UI"));
+				check(ClearColorPickerUI);
+
+				context->ProcessEvent(ClearColorPickerUI, nullptr);
+			}
+
+			APawn* pawn = context->GetInstigator();
+			APlayerController* controller = Cast<APlayerController>(pawn->GetController());
+			if (controller) {
+				UClass* NewColorGunUIClass = LoadObject<UClass>(nullptr, TEXT("/MoreColorSlots/UI/MCS_InteractWidget_BetterColorGunMenu.MCS_InteractWidget_BetterColorGunMenu_C"));
+				check(NewColorGunUIClass);
+
+				UUserWidget* newUI = CreateWidget(controller, NewColorGunUIClass, NAME_None);
+
+				FObjectProperty* mColorGunProperty = CastFieldChecked<FObjectProperty>(NewColorGunUIClass->FindPropertyByName(TEXT("mColorGun")));
+				check(mColorGunProperty);
+				mColorGunProperty->SetPropertyValue_InContainer(newUI, context, 0);
+
+				mColorWidgetProperty->SetObjectPropertyValue_InContainer(context, newUI, 0);
+
+				AFGHUD* hud = Cast<AFGHUD>(controller->GetHUD());
+				if (hud) {
+					UFGGameUI* gameUI = hud->GetGameUI();
+					gameUI->PushWidget(CastChecked<UFGInteractWidget>(newUI));
+				}
+			}
+
+			helper.JumpToFunctionReturn();
 		}
 	}, EPredefinedHookOffset::Start);
 }

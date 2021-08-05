@@ -31,4 +31,6 @@ private:
 	UStaticMesh* mStaticMeshCached;
 
 	bool mUseAsOccluderCached;
+
+	uint8 mNumColorSlotsCached;
 };

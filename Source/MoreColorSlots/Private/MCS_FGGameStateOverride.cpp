@@ -1,6 +1,7 @@
 
 #include "MCS_FGGameStateOverride.h"
 #include "MoreColorSlotsModule.h"
+#include "MCS_MoreColorSlotsConfigStruct.h"
 
 #include "SML/Public/Patching/NativeHookManager.h"
 #include "FGGameState.h"
@@ -11,7 +12,11 @@ void MCS_SetupFGGameStateOverrides() {
 
 		AFGBuildableSubsystem* buildSubsystem = AFGBuildableSubsystem::Get(self->GetWorld());
 
-		for (int i = 0; i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+		EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+		uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
+
+		for (int i = 0; i < numColorSlots; i++) {
 			check(i < self->mBuildingColorSlotsPrimary_Linear.Num());
 
 			FLinearColor buildColor = buildSubsystem->GetColorSlotPrimary_Linear(i);
@@ -28,7 +33,11 @@ void MCS_SetupFGGameStateOverrides() {
 
 		AFGBuildableSubsystem* buildSubsystem = AFGBuildableSubsystem::Get(self->GetWorld());
 
-		for (int i = 0; i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+		EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+		uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
+
+		for (int i = 0; i < numColorSlots; i++) {
 			check(i < self->mBuildingColorSlotsSecondary_Linear.Num());
 
 			FLinearColor buildColor = buildSubsystem->GetColorSlotSecondary_Linear(i);

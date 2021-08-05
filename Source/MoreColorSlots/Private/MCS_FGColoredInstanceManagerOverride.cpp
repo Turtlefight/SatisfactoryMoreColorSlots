@@ -1,5 +1,6 @@
 
 #include "MCS_FGColoredInstanceManagerOverride.h"
+#include "MCS_BPLibrary.h"
 
 #include "SML/Public/Patching/NativeHookManager.h"
 #include "HAL/IConsoleManager.h"
@@ -79,6 +80,11 @@ void UMCS_FGColoredInstanceManagerOverride::OverrideSetupInstanceLists(UStaticMe
 	this->mStaticMeshCached = staticMesh;
 	this->mUseAsOccluderCached = useAsOccluder;
 	this->mMinMaxCullDistanceCached = minMaxCullDistance;
+
+	FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+	EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+	uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
+	this->mNumColorSlotsCached = numColorSlots;
 }
 
 void UMCS_FGColoredInstanceManagerOverride::OverrideClearInstances() {
@@ -89,10 +95,17 @@ void UMCS_FGColoredInstanceManagerOverride::OverrideClearInstances() {
 }
 
 void UMCS_FGColoredInstanceManagerOverride::OverrideAddInstance(const FTransform& transform, InstanceHandle& handle, uint8 colorIndex) {
-	if (this->mSingleColorOnly || colorIndex < BUILDABLE_COLORS_MAX_SLOTS || colorIndex > MCS_BUILDABLE_COLORS_MAX_SLOTS)
-		checkf(colorIndex, TEXT("UFGColoredInstanceManager::OverrideAddInstance: colorIndex out of range"));
+	checkf(!this->mSingleColorOnly, TEXT("UFGColoredInstanceManager::OverrideAddInstance: called override on single color instance"));
+	checkf(colorIndex >= BUILDABLE_COLORS_MAX_SLOTS && colorIndex < MCS_BUILDABLE_COLORS_MAX_SLOTS, TEXT("UFGColoredInstanceManager::OverrideAddInstance: colorIndex out of range"));
 
 	int additionalColorIndex = colorIndex - BUILDABLE_COLORS_MAX_SLOTS;
+
+	// this only happens when decreasing the number of color slots in the mod config.
+	// we just forward to the vanilla color slot until the instance gets assigned its new color slot
+	if (additionalColorIndex >= this->mNumColorSlotsCached) {
+		AddInstance(transform, handle, 0);
+		return;
+	}
 
 	if (!this->mSingleColorOnly && !this->mAdditionalInstanceComponents[additionalColorIndex]) {
 		this->mAdditionalInstanceComponents[additionalColorIndex] = CreateHierarchicalInstancingComponent(this->mStaticMeshCached, this->mUseAsOccluderCached, this->mMinMaxCullDistanceCached);

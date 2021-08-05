@@ -1,6 +1,7 @@
 
 #include "MCS_FGFactoryMaterialInstanceManagerOverride.h"
 #include "MoreColorSlotsModule.h"
+#include "MCS_BPLibrary.h"
 
 #include "SML/Public/Patching/NativeHookManager.h"
 #include "FGFactoryMaterialInstanceManager.h"
@@ -19,9 +20,13 @@ void MCS_SetupFGFactoryMaterialInstanceManagerOverrides() {
 	{
 		scope.Cancel();
 
+		FMCS_MoreColorSlotsConfigStruct config = FMCS_MoreColorSlotsConfigStruct::GetActiveConfig();
+		EMCS_AdditionalColorPalettes additionalPalettes = (EMCS_AdditionalColorPalettes)config.NumColorPalettes;
+		uint8 numColorSlots = UMCS_BPLibrary::GetNumberOfColorSlots(additionalPalettes);
+
 		self->mCanBeColored = canBeColored;
 		self->mIsShared = lookupPrefix.IsEmpty();
-		self->mMaterialInstances.SetNumZeroed(self->mCanBeColored ? MCS_BUILDABLE_COLORS_MAX_SLOTS : 1);
+		self->mMaterialInstances.SetNumZeroed(self->mCanBeColored ? numColorSlots : 1);
 		
 		self->mCachedBuildSystem = AFGBuildableSubsystem::Get(worldContext);
 		if (self->mCachedBuildSystem) {
@@ -39,7 +44,7 @@ void MCS_SetupFGFactoryMaterialInstanceManagerOverrides() {
 					self->mMaterialInstances[0] = dynMat;
 					self->mInstanceNames.Add(dynMat->GetFName().ToString());
 				} else {
-					for (int i = 0; i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
+					for (int i = 0; i < numColorSlots; i++) {
 						UMaterialInstanceDynamic* dynMat = UMaterialInstanceDynamic::Create(defaultMaterial, nullptr);
 						self->mMaterialInstances[i] = dynMat;
 						self->mInstanceNames.Add(dynMat->GetFName().ToString());
@@ -64,7 +69,7 @@ void MCS_SetupFGFactoryMaterialInstanceManagerOverrides() {
 					self->mInstanceNames.Add(dynMatName);
 					
 				} else {
-					for (int i = 0; i < MCS_BUILDABLE_COLORS_MAX_SLOTS; i++) {
+					for (int i = 0; i < numColorSlots; i++) {
 						UMaterialInstanceDynamic* dynMat;
 						if (!materialInterface->IsA(UMaterialInstanceDynamic::StaticClass())) {
 							dynMat = UMaterialInstanceDynamic::Create(materialInterface, nullptr);
